@@ -70,6 +70,8 @@
         <module>plugin</module>
         <module>video</module>
         <module>security</module>
+        <module>ddms</module>
+        <module>catalog-transformer-geojson-input</module>
     </modules>
 
     <build>
