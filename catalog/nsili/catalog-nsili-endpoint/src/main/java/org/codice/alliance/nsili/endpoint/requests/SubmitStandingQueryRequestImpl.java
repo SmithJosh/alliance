@@ -160,6 +160,7 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
       boolean outgoingValidationEnabled,
       long maxWaitToStartTimeMsecs) {
     id = UUID.randomUUID().toString();
+    LOGGER.trace("SubmitStandingQueryRequestImpl created with id {}", id);
     if (resultAttributes != null) {
       this.resultAttributes.addAll(Arrays.asList(resultAttributes));
     }
@@ -192,6 +193,7 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
 
     executionThread = new ExecutionThread();
     executionThread.setUpdateRate(defaultUpdateFrequencyMsec);
+    LOGGER.trace("Starting standing query");
     executionThread.start();
   }
 
@@ -267,23 +269,27 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
 
   @Override
   public State complete_DAG_results(DAGListHolder results) throws ProcessingFault, SystemFault {
+    LOGGER.trace("complete_dag_results invoked");
     if (standingQueryData.size() == 0) {
       try {
+        LOGGER.trace("no results available - sleeping for {} ms", updateFrequencyMsec);
         Thread.sleep(updateFrequencyMsec);
       } catch (Exception ignore) {
       }
     }
 
     List<DAG> returnData = standingQueryData.getResultData(pageSize);
-
+    LOGGER.debug("Retrieved {} DAG results", returnData.size());
     if (LOGGER.isTraceEnabled()) {
       returnData.forEach(dag -> DAGConverter.printDAG(dag));
     }
 
     results.value = returnData.toArray(new DAG[0]);
     if (standingQueryData.size() == 0) {
+      LOGGER.trace("Returning IN_PROGRESS state");
       return State.IN_PROGRESS;
     } else {
+      LOGGER.trace("Returning RESULTS_AVAILABLE state");
       return State.RESULTS_AVAILABLE;
     }
   }
@@ -433,7 +439,11 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
                 "Start time for subscription is in the future, waiting {} seconds", waitSecs);
             try {
               Thread.sleep(waitToStart);
-            } catch (Exception ignore) {
+            } catch (InterruptedException exception) {
+              // if we were interrupted, break out to allow exit
+              LOGGER.info("Standing query interrupted - aborting.");
+              running = false;
+              break;
             }
           }
         }
@@ -441,6 +451,10 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
         // Right now we don't produce the Association View
         if (!query.view.equals(NsiliConstants.NSIL_ASSOCIATION_VIEW) && !paused) {
           if (standingQueryData.size() <= maxPendingResults) {
+            LOGGER.trace(
+                "Standing data size of {} out of maxpendingsize of {}",
+                standingQueryData.size(),
+                maxPendingResults);
             DAGQueryResult queryResult = getData(queryTime);
             if (queryResult != null) {
               standingQueryData.add(queryResult);
@@ -453,8 +467,7 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
               try {
                 if (standingQueryData.size() > 0) {
                   LOGGER.trace(
-                      "Notifying callback that results are available: {}",
-                      standingQueryData.size());
+                      "Notifying callback that {} results are available", standingQueryData.size());
                   callback._notify(
                       org.codice.alliance.nsili.common.UCO.State.RESULTS_AVAILABLE,
                       get_request_description());
@@ -462,10 +475,12 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
               } catch (InvalidInputParameter | ProcessingFault | SystemFault fault) {
                 LOGGER.debug(UNABLE_TO_NOTIFY_CALLBACK, fault);
               } catch (Exception e) {
+                LOGGER.debug("Unable to notify callback", e);
                 failedCallbacks.add(callback);
               }
             }
 
+            LOGGER.trace("Freeing {} callbacks", failedCallbacks.size());
             failedCallbacks.stream().forEach(SubmitStandingQueryRequestImpl.this::freeCallback);
           }
           lastCompletedExecutionTime = System.currentTimeMillis();
@@ -475,13 +490,18 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
         // as possible to catch up.
         if (!executionThread.hasMoreResultsAvailOnLastQuery()) {
           try {
+            LOGGER.debug("No more results available yet - sleeping until next update");
             Thread.sleep(updateRate);
           } catch (Exception ignore) {
+            LOGGER.debug("Interrupted sleep");
           }
+        } else {
+          LOGGER.debug("More results available - continuing to process");
         }
       }
 
       synchronized (callbackLockObj) {
+        LOGGER.debug("Clearing all callbacks");
         callbacks.clear();
       }
     }
@@ -489,6 +509,7 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
     protected DAGQueryResult getData(long queryTime) {
       DAGQueryResult result = null;
 
+      LOGGER.trace("getData called with queryTime of {}", queryTime);
       List<Result> catalogResults = new ArrayList<>();
 
       Filter parsedFilter = getFilter(queryTime);
@@ -507,6 +528,7 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
         QueryResultsCallable queryCallable = new QueryResultsCallable(catalogQueryRequest);
 
         try {
+          LOGGER.trace("Executing query...");
           QueryResponse queryResponse = NsiliEndpoint.getGuestSubject().execute(queryCallable);
           int numHits = (int) queryResponse.getHits();
           List<Result> results = queryResponse.getResults();
@@ -529,6 +551,7 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
               startIndex = 1;
             }
           }
+          LOGGER.trace("Set startIndex to {}", startIndex);
         } catch (SecurityServiceException e) {
           LOGGER.debug("Unable to update subject on NSILI Library", e);
         }
@@ -544,6 +567,8 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
         NsiliDataModel nsiliDataModel = new NsiliDataModel();
         mandatoryAttributes = nsiliDataModel.getRequiredAttrsForView(NsiliConstants.NSIL_ALL_VIEW);
       }
+
+      LOGGER.debug("Converting {} results to DAG format", catalogResults.size());
       for (Result catalogResult : catalogResults) {
         try {
           DAG dag =
@@ -556,6 +581,8 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
       }
 
       if (!dags.isEmpty()) {
+        LOGGER.debug(
+            "Returning {} DAG results at time {}", dags.size(), System.currentTimeMillis());
         result = new DAGQueryResult(System.currentTimeMillis(), dags);
       }
       return result;
@@ -579,12 +606,33 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
     private Filter getFilter(long queryTime) {
       Filter parsedFilter = bqsFilter;
       if (!moreResultsAvailOnLastQuery && queryTime > 0) {
+        LOGGER.trace("Adding after modified time to BQS filter...");
         parsedFilter =
             filterBuilder.allOf(
                 bqsFilter,
                 filterBuilder.attribute(Metacard.MODIFIED).is().after().date(new Date(queryTime)));
+        /*
+                // Any active resource metacards
+                Filter resourceFilter =
+                    filterBuilder.allOf(
+                        filterBuilder.attribute(Metacard.MODIFIED).is().after().date(new Date(queryTime)),
+                        filterBuilder.attribute(Metacard.TAGS).is().like().text(Metacard.DEFAULT_TAG)
+                    );
+
+                // Any deleted or updated metacards
+                Filter versionedFilter =
+                    filterBuilder.allOf(
+                        filterBuilder.attribute(Metacard.TAGS).is().like().text(MetacardVersion.VERSION_TAG),
+                        filterBuilder.attribute(MetacardVersion.VERSION_TAGS).is().like().text(Metacard.DEFAULT_TAG),
+                        filterBuilder.anyOf(
+                            filterBuilder.attribute(MetacardVersion.ACTION).is().like().text(MetacardVersion.Action.DELETED.getKey()),
+                            filterBuilder.attribute(MetacardVersion.ACTION).is().like().text(MetacardVersion.Action.VERSIONED.getKey())
+                        )
+                    );
+        */
 
         // Always need to ask for the DEFAULT_TAG or we get non-resource metacards
+        // THIS WON'T FIND DELETED METACARDS
         Filter resourceFilter =
             filterBuilder.allOf(
                 parsedFilter,
@@ -611,7 +659,12 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
                           .attribute(MetacardVersion.ACTION)
                           .is()
                           .like()
-                          .text(MetacardVersion.Action.DELETED.getKey())));
+                          .text(MetacardVersion.Action.DELETED.getKey()),
+                      filterBuilder
+                          .attribute(Metacard.MODIFIED)
+                          .is()
+                          .after()
+                          .date(new Date(queryTime))));
         }
       } else {
         // Always need to ask for the DEFAULT_TAG or we get non-resource metacards
@@ -640,7 +693,12 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
                           .attribute(MetacardVersion.ACTION)
                           .is()
                           .like()
-                          .text(MetacardVersion.Action.DELETED.getKey())));
+                          .text(MetacardVersion.Action.DELETED.getKey()),
+                      filterBuilder
+                          .attribute(Metacard.MODIFIED)
+                          .is()
+                          .after()
+                          .date(new Date(queryTime))));
         }
       }
       return parsedFilter;
