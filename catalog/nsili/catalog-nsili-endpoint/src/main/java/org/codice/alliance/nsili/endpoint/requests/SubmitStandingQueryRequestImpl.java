@@ -15,14 +15,18 @@ package org.codice.alliance.nsili.endpoint.requests;
 
 import ddf.catalog.CatalogFramework;
 import ddf.catalog.core.versioning.MetacardVersion;
+import ddf.catalog.data.Attribute;
 import ddf.catalog.data.Metacard;
 import ddf.catalog.data.Result;
+import ddf.catalog.data.impl.AttributeImpl;
 import ddf.catalog.filter.FilterBuilder;
+import ddf.catalog.filter.impl.SortByImpl;
 import ddf.catalog.operation.QueryRequest;
 import ddf.catalog.operation.QueryResponse;
 import ddf.catalog.operation.impl.QueryImpl;
 import ddf.catalog.operation.impl.QueryRequestImpl;
 import ddf.security.service.SecurityServiceException;
+import java.io.Serializable;
 import java.nio.charset.Charset;
 import java.time.DayOfWeek;
 import java.time.LocalDateTime;
@@ -82,6 +86,8 @@ import org.omg.PortableServer.POAPackage.ObjectAlreadyActive;
 import org.omg.PortableServer.POAPackage.ServantAlreadyActive;
 import org.omg.PortableServer.POAPackage.WrongPolicy;
 import org.opengis.filter.Filter;
+import org.opengis.filter.sort.SortBy;
+import org.opengis.filter.sort.SortOrder;
 import org.slf4j.LoggerFactory;
 
 public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPOA {
@@ -209,28 +215,37 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
 
   @Override
   public int get_number_of_hits() throws ProcessingFault, SystemFault {
+    LOGGER.trace("get_number_of_hits invoked - returning {}", standingQueryData.size());
     return standingQueryData.size();
   }
 
   @Override
   public int get_number_of_hits_in_interval(int interval)
       throws InvalidInputParameter, ProcessingFault, SystemFault {
+    LOGGER.trace(
+        "get_number_of_hits_in_interval invoked in interval {} - returning {}",
+        interval,
+        standingQueryData.getNumberOfHitsInInterval(interval));
     return standingQueryData.getNumberOfHitsInInterval(interval);
   }
 
   @Override
   public int get_number_of_intervals() throws ProcessingFault, SystemFault {
+    LOGGER.trace(
+        "get_number_of_intervals invoked - returning {}", standingQueryData.getNumberOfIntervals());
     return standingQueryData.getNumberOfIntervals();
   }
 
   @Override
   public void clear_all() throws ProcessingFault, SystemFault {
+    LOGGER.trace("clear_all invoked");
     standingQueryData.clearAll();
   }
 
   @Override
   public void clear_intervals(int numIntervals)
       throws InvalidInputParameter, ProcessingFault, SystemFault {
+    LOGGER.trace("clear_intervals invoked with {}", numIntervals);
     standingQueryData.clearIntervals(numIntervals);
   }
 
@@ -241,29 +256,34 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
         (long) relativeTime.hour * HOUR_MSEC
             + relativeTime.minute * MINUTE_MSEC
             + ((int) relativeTime.second * 1000);
+    LOGGER.trace("clear_before invoked with relative ms of {}", msecOffSet);
     standingQueryData.clearBefore(msecOffSet);
   }
 
   @Override
   public void pause() throws ProcessingFault, SystemFault {
+    LOGGER.trace("puase invoked");
     this.paused = true;
   }
 
   @Override
   public void resume() throws ProcessingFault, SystemFault {
     this.paused = false;
+    LOGGER.trace("resume invoked");
     executionThread.interrupt();
   }
 
   @Override
   public AbsTime get_time_last_executed() throws ProcessingFault, SystemFault {
     long lastExecMillis = executionThread.getLastCompletedExecutionTime();
+    LOGGER.trace("get_time_last_executed invoked - returning {}", lastExecMillis);
     return ResultDAGConverter.getAbsTime(new Date(lastExecMillis));
   }
 
   @Override
   public AbsTime get_time_next_execution() throws ProcessingFault, SystemFault {
     long nextExecMillis = executionThread.getNextExecutionTime();
+    LOGGER.trace("get_time_next_execution invoked - returning {}", nextExecMillis);
     return ResultDAGConverter.getAbsTime(new Date(nextExecMillis));
   }
 
@@ -340,6 +360,7 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
 
   @Override
   public void cancel() throws ProcessingFault, SystemFault {
+    LOGGER.trace("cancel invoked");
     executionThread.stopRunning();
   }
 
@@ -348,6 +369,7 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
       throws InvalidInputParameter, ProcessingFault, SystemFault {
     synchronized (callbackLockObj) {
       String id = UUID.randomUUID().toString();
+      LOGGER.debug("Registering callback with id {}", id);
       callbacks.put(id, acallback);
       return id;
     }
@@ -356,18 +378,21 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
   @Override
   public void free_callback(String id) throws InvalidInputParameter, ProcessingFault, SystemFault {
     synchronized (callbackLockObj) {
+      LOGGER.debug("Freeing callback with id {}", id);
       callbacks.remove(id);
     }
   }
 
   public void freeCallback(Callback callback) {
     synchronized (callbackLockObj) {
+      LOGGER.debug("Freeing callback by value");
       callbacks.values().remove(callback);
     }
   }
 
   @Override
   public RequestManager get_request_manager() throws ProcessingFault, SystemFault {
+    LOGGER.trace("get_request_manager invoked");
     if (requestManager == null) {
       String requestManagerId = UUID.randomUUID().toString();
       RequestManagerImpl requestManagerImpl = new RequestManagerImpl();
@@ -415,6 +440,7 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
     }
 
     public void run() {
+      LOGGER.trace("starting execution thread");
       while (running) {
         long queryTime = lastExecutionTime - 1000;
 
@@ -422,9 +448,13 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
         // last query
         if (!moreResultsAvailOnLastQuery && !paused) {
           lastExecutionTime = System.currentTimeMillis();
+          LOGGER.trace(
+              "No outstanding results to process - updating execution time to {}",
+              lastExecutionTime);
         }
 
         if (endDate != null && lastExecutionTime > endDate.getTime()) {
+          LOGGER.debug("Reached end of execution time -signalling complete");
           running = false;
           break;
         }
@@ -442,8 +472,8 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
             } catch (InterruptedException exception) {
               // if we were interrupted, break out to allow exit
               LOGGER.info("Standing query interrupted - aborting.");
-              running = false;
-              break;
+              // running = false;
+              // break;
             }
           }
         }
@@ -452,17 +482,26 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
         if (!query.view.equals(NsiliConstants.NSIL_ASSOCIATION_VIEW) && !paused) {
           if (standingQueryData.size() <= maxPendingResults) {
             LOGGER.trace(
-                "Standing data size of {} out of maxpendingsize of {}",
+                "Room for more query results (current size: {} max size: {}",
                 standingQueryData.size(),
                 maxPendingResults);
             DAGQueryResult queryResult = getData(queryTime);
-            if (queryResult != null) {
+            if (queryResult != null
+                && queryResult.getResults() != null
+                && queryResult.getResults().size() > 0) {
+              LOGGER.trace(
+                  "Adding {} query results to standing query data structure",
+                  queryResult.getResults().size());
               standingQueryData.add(queryResult);
+            } else {
+              LOGGER.trace("No data added to results");
             }
           }
 
+          LOGGER.trace("StandingQueryData size: {}", standingQueryData.size());
           if (standingQueryData.size() > 0) {
             List<Callback> failedCallbacks = new ArrayList<>();
+            LOGGER.trace("Iterating through {} callbacks to notify of results", callbacks.size());
             for (Callback callback : callbacks.values()) {
               try {
                 if (standingQueryData.size() > 0) {
@@ -480,7 +519,7 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
               }
             }
 
-            LOGGER.trace("Freeing {} callbacks", failedCallbacks.size());
+            LOGGER.trace("Freeing {} failed callbacks", failedCallbacks.size());
             failedCallbacks.stream().forEach(SubmitStandingQueryRequestImpl.this::freeCallback);
           }
           lastCompletedExecutionTime = System.currentTimeMillis();
@@ -500,6 +539,7 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
         }
       }
 
+      LOGGER.trace("Exiting execution thread run loop");
       synchronized (callbackLockObj) {
         LOGGER.debug("Clearing all callbacks");
         callbacks.clear();
@@ -517,6 +557,8 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
       catalogQuery = new QueryImpl(parsedFilter);
       catalogQuery.setRequestsTotalResultsCount(true);
       catalogQuery.setPageSize(pageSize);
+      SortBy sortBy = new SortByImpl(Metacard.CREATED, SortOrder.ASCENDING);
+      catalogQuery.setSortBy(sortBy);
       if (moreResultsAvailOnLastQuery) {
         catalogQuery.setStartIndex(startIndex);
       }
@@ -528,29 +570,41 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
         QueryResultsCallable queryCallable = new QueryResultsCallable(catalogQueryRequest);
 
         try {
-          LOGGER.trace("Executing query...");
+          LOGGER.debug("Executing query...");
           QueryResponse queryResponse = NsiliEndpoint.getGuestSubject().execute(queryCallable);
           int numHits = (int) queryResponse.getHits();
+          LOGGER.trace("Hits received: {}", numHits);
           List<Result> results = queryResponse.getResults();
           int origResultSize = results.size();
-          results = LibraryImpl.getLatestResults(results);
+          LOGGER.trace("Query returned {} results", origResultSize);
+          results = massageResults(results);
+          int filteredResultSize = results.size();
           catalogResults.addAll(results);
           int accumResults = origResultSize + (startIndex - 1);
 
-          LOGGER.trace("Processing Result {} of {}", accumResults, numHits);
+          LOGGER.trace(
+              "Cleaned up results added to be processed: {}, total hits handled: {}",
+              filteredResultSize,
+              accumResults);
 
+          if (accumResults < numHits) {
+            moreResultsAvailOnLastQuery = true;
+            startIndex = accumResults + 1;
+          } else {
+            moreResultsAvailOnLastQuery = false;
+            startIndex = 1;
+          }
+
+          /*
+           * Don't need this, we could filter out the remaining hits, but the accumResults should
+           * go up to the numHits received.
+           */
+          /*
           if (results.isEmpty()) {
             moreResultsAvailOnLastQuery = false;
             startIndex = 1;
-          } else {
-            if (accumResults < numHits) {
-              moreResultsAvailOnLastQuery = true;
-              startIndex = accumResults + 1;
-            } else {
-              moreResultsAvailOnLastQuery = false;
-              startIndex = 1;
-            }
           }
+          */
           LOGGER.trace("Set startIndex to {}", startIndex);
         } catch (SecurityServiceException e) {
           LOGGER.debug("Unable to update subject on NSILI Library", e);
@@ -591,7 +645,11 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
     private QueryRequestImpl getQueryRequest(Filter parsedFilter) {
       QueryRequestImpl catalogQueryRequest;
       if (querySources == null || querySources.isEmpty()) {
-        LOGGER.trace("Query request will be local, no sources specified: {}", parsedFilter);
+        if (LOGGER.isTraceEnabled()) {
+          LOGGER.trace(
+              "Query request will be local, no sources specified - CatalogQuery: {}",
+              catalogQuery.toString());
+        }
         catalogQueryRequest = new QueryRequestImpl(catalogQuery);
       } else {
         if (LOGGER.isTraceEnabled()) {
@@ -604,101 +662,89 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
     }
 
     private Filter getFilter(long queryTime) {
+      /*
+       * Determine what types of records to query for. If the provided query has NSILI:CARD:status
+       * specified, we only need to make sure we are pulling resources - the BQSConverter has
+       * already handled the requested states.
+       */
+      boolean checkNew = true;
+      boolean checkChanged = true;
+      boolean checkObsolete = true;
+      List<Filter> additionalChecks = new ArrayList<>();
+      if (LibraryImpl.queryContainsStatus(query.bqs_query)) {
+        checkChanged = false;
+        checkObsolete = false;
+      }
+
       Filter parsedFilter = bqsFilter;
+
       if (!moreResultsAvailOnLastQuery && queryTime > 0) {
         LOGGER.trace("Adding after modified time to BQS filter...");
+
+        // add in the date/time constraint and the metacard-tags = resource constraint to
+        // eliminate non-resource cards
         parsedFilter =
             filterBuilder.allOf(
                 bqsFilter,
-                filterBuilder.attribute(Metacard.MODIFIED).is().after().date(new Date(queryTime)));
-        /*
-                // Any active resource metacards
-                Filter resourceFilter =
-                    filterBuilder.allOf(
-                        filterBuilder.attribute(Metacard.MODIFIED).is().after().date(new Date(queryTime)),
-                        filterBuilder.attribute(Metacard.TAGS).is().like().text(Metacard.DEFAULT_TAG)
-                    );
-
-                // Any deleted or updated metacards
-                Filter versionedFilter =
-                    filterBuilder.allOf(
-                        filterBuilder.attribute(Metacard.TAGS).is().like().text(MetacardVersion.VERSION_TAG),
-                        filterBuilder.attribute(MetacardVersion.VERSION_TAGS).is().like().text(Metacard.DEFAULT_TAG),
-                        filterBuilder.anyOf(
-                            filterBuilder.attribute(MetacardVersion.ACTION).is().like().text(MetacardVersion.Action.DELETED.getKey()),
-                            filterBuilder.attribute(MetacardVersion.ACTION).is().like().text(MetacardVersion.Action.VERSIONED.getKey())
-                        )
-                    );
-        */
-
-        // Always need to ask for the DEFAULT_TAG or we get non-resource metacards
-        // THIS WON'T FIND DELETED METACARDS
-        Filter resourceFilter =
-            filterBuilder.allOf(
-                parsedFilter,
+                filterBuilder.attribute(Metacard.MODIFIED).is().after().date(new Date(queryTime)),
                 filterBuilder.attribute(Metacard.TAGS).is().like().text(Metacard.DEFAULT_TAG));
 
-        // Default for NSILI is to include OBSOLETE (deleted) items
-        if (!LibraryImpl.queryContainsStatus(query.bqs_query)) {
-          parsedFilter =
-              filterBuilder.anyOf(
-                  resourceFilter,
-                  filterBuilder.allOf(
-                      parsedFilter,
-                      filterBuilder
-                          .attribute(Metacard.TAGS)
-                          .is()
-                          .like()
-                          .text(MetacardVersion.VERSION_TAG),
-                      filterBuilder
-                          .attribute(MetacardVersion.VERSION_TAGS)
-                          .is()
-                          .like()
-                          .text(Metacard.DEFAULT_TAG),
-                      filterBuilder
-                          .attribute(MetacardVersion.ACTION)
-                          .is()
-                          .like()
-                          .text(MetacardVersion.Action.DELETED.getKey()),
-                      filterBuilder
-                          .attribute(Metacard.MODIFIED)
-                          .is()
-                          .after()
-                          .date(new Date(queryTime))));
+        // add in changed metacards if necessary
+        if (checkChanged) {
+          LOGGER.trace("Adding terms for changed metacards to BQS filter...");
+          additionalChecks.add(
+              filterBuilder.allOf(
+                  filterBuilder
+                      .attribute(Metacard.TAGS)
+                      .is()
+                      .like()
+                      .text(MetacardVersion.VERSION_TAG),
+                  filterBuilder
+                      .attribute(MetacardVersion.ACTION)
+                      .is()
+                      .like()
+                      .text(MetacardVersion.Action.VERSIONED.getKey()),
+                  filterBuilder
+                      .attribute(MetacardVersion.VERSIONED_ON)
+                      .is()
+                      .after()
+                      .date(new Date(queryTime))));
         }
-      } else {
-        // Always need to ask for the DEFAULT_TAG or we get non-resource metacards
-        Filter resourceFilter =
-            filterBuilder.allOf(
-                bqsFilter,
-                filterBuilder.attribute(Metacard.TAGS).is().like().text(Metacard.DEFAULT_TAG));
 
-        if (!LibraryImpl.queryContainsStatus(query.bqs_query)) {
-          parsedFilter =
-              filterBuilder.anyOf(
-                  resourceFilter,
-                  filterBuilder.allOf(
-                      bqsFilter,
-                      filterBuilder
-                          .attribute(Metacard.TAGS)
-                          .is()
-                          .like()
-                          .text(MetacardVersion.VERSION_TAG),
-                      filterBuilder
-                          .attribute(MetacardVersion.VERSION_TAGS)
-                          .is()
-                          .like()
-                          .text(Metacard.DEFAULT_TAG),
+        // add in deleted metacards if necessary
+        if (checkObsolete) {
+          LOGGER.trace("Adding terms for obsolete/deleted metacards to BQS filter...");
+          additionalChecks.add(
+              filterBuilder.allOf(
+                  filterBuilder
+                      .attribute(Metacard.TAGS)
+                      .is()
+                      .like()
+                      .text(MetacardVersion.VERSION_TAG),
+                  filterBuilder
+                      .attribute(MetacardVersion.VERSIONED_ON)
+                      .is()
+                      .after()
+                      .date(new Date(queryTime)),
+                  filterBuilder.anyOf(
                       filterBuilder
                           .attribute(MetacardVersion.ACTION)
                           .is()
                           .like()
                           .text(MetacardVersion.Action.DELETED.getKey()),
                       filterBuilder
-                          .attribute(Metacard.MODIFIED)
+                          .attribute(MetacardVersion.ACTION)
                           .is()
-                          .after()
-                          .date(new Date(queryTime))));
+                          .like()
+                          .text(MetacardVersion.Action.DELETED_CONTENT.getKey()))));
+        }
+
+        // OR in the changed and deleted if necessary
+        if (additionalChecks.size() == 1) {
+          parsedFilter = filterBuilder.anyOf(parsedFilter, additionalChecks.get(0));
+        } else if (additionalChecks.size() == 2) {
+          parsedFilter =
+              filterBuilder.anyOf(parsedFilter, additionalChecks.get(0), additionalChecks.get(1));
         }
       }
       return parsedFilter;
@@ -709,10 +755,12 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
     }
 
     public long getLastCompletedExecutionTime() {
+      LOGGER.trace("getLastCompletedExecutionTime invoked");
       return lastCompletedExecutionTime;
     }
 
     public long getNextExecutionTime() {
+      LOGGER.trace("getNextExecutionTime invoked");
       return lastCompletedExecutionTime + updateRate;
     }
 
@@ -726,9 +774,127 @@ public class SubmitStandingQueryRequestImpl extends SubmitStandingQueryRequestPO
     }
 
     public void stopRunning() {
+      LOGGER.trace("stopRunning invoked");
       this.running = false;
       interrupt();
     }
+  }
+
+  /**
+   * Split into three lists of results for new resources, updated resources, and deleted resources.
+   * Then process each list in order to generate a set of results for further processing and
+   * converting to DAG.
+   *
+   * @param results
+   * @return
+   */
+  protected List<Result> massageResults(List<Result> results) {
+    Map<String, Result> resourceRecords = new HashMap<>();
+    Map<String, Result> versionedRecords = new HashMap<>();
+    Map<String, Result> deletedRecords = new HashMap<>();
+    Map<String, Result> resultsMap = new HashMap<>();
+    Attribute attribute = null;
+    String action = null;
+    Serializable attributeValue;
+    if (results != null) {
+      for (Result result : results) {
+        // Get id for original id for any revised card (updated or deleted)
+        String metacardId = null;
+        metacardId = ResultDAGConverter.getMetacardId(result.getMetacard());
+        attribute = result.getMetacard().getAttribute(MetacardVersion.ACTION);
+        action = attribute == null ? null : (String) attribute.getValue();
+        if (action == null) {
+          // this is a normal resource that has been added to the system - use as is
+          resultsMap.put(metacardId, result);
+        } else if (action.contains(MetacardVersion.Action.VERSIONED.getKey())) {
+          // if versioned, update original metacard with action of Versioned
+
+          result.getMetacard().setAttribute(new AttributeImpl(Metacard.ID, metacardId));
+          if (isNewer(result, versionedRecords.get(result.getMetacard().getId()))) {
+            LOGGER.trace("New result found for id {} - updating map", metacardId);
+            versionedRecords.put(metacardId, result);
+          }
+        } else {
+          // for deleted, update with original id and save
+          result.getMetacard().setAttribute(new AttributeImpl(Metacard.ID, metacardId));
+          LOGGER.trace("Deleted result found with id {} - adding to list", metacardId);
+          deletedRecords.put(metacardId, result);
+        }
+      }
+    }
+
+    // process the versioned list first in case we deleted the updated record
+    for (String id : versionedRecords.keySet()) {
+      if (isNewer(versionedRecords.get(id), resultsMap.get(id))) {
+        Result result = resourceRecords.get(id);
+        // if record exists, update in place with action and versioned-on fields
+        if (result != null) {
+          LOGGER.trace("Updating record from this resultset with changes for id {}", id);
+          result
+              .getMetacard()
+              .setAttribute(
+                  versionedRecords.get(id).getMetacard().getAttribute(MetacardVersion.ACTION));
+          result
+              .getMetacard()
+              .setAttribute(
+                  versionedRecords
+                      .get(id)
+                      .getMetacard()
+                      .getAttribute(MetacardVersion.VERSIONED_ON));
+          // move over updated record to resultsMap
+          resultsMap.put(id, result);
+        } else {
+          LOGGER.trace("Versioned record not found in resource records.");
+        }
+      }
+    }
+
+    // just put all the deleted results over the top of existing ones
+    for (String id : deletedRecords.keySet()) {
+      resultsMap.put(id, deletedRecords.get(id));
+    }
+
+    LOGGER.trace("Returning list with {} entries", resultsMap.size());
+    return new ArrayList<>(resultsMap.values());
+  }
+
+  /**
+   * Returns true if the new result is newer (more recent) than the existing result. If the new
+   * result is null this returns false. If the existing result is null, this returns true. If the
+   * two results have the same timestamps, this returns false.
+   *
+   * @param newResult new result to compare timestamps against the existing result
+   * @param existingResult existing result to be compared against
+   * @return true if the newResult is newer than the existingResult
+   */
+  public static boolean isNewer(Result newResult, Result existingResult) {
+    boolean newer = true;
+    if (existingResult == null) {
+      return true;
+    }
+    if (newResult == null) {
+      return false;
+    }
+
+    Attribute attribute = existingResult.getMetacard().getAttribute(MetacardVersion.VERSIONED_ON);
+    if (attribute == null) {
+      return true;
+    }
+    Date existingDate = (Date) attribute.getValue();
+
+    if (attribute == null) {
+      return true;
+    }
+
+    attribute = newResult.getMetacard().getAttribute(MetacardVersion.VERSIONED_ON);
+    if (attribute == null) {
+      return false;
+    }
+
+    if (existingDate.compareTo((Date) attribute.getValue()) >= 0) {
+      newer = false;
+    }
+    return newer;
   }
 
   protected void parseLifeSpan(QueryLifeSpan lifespan) {

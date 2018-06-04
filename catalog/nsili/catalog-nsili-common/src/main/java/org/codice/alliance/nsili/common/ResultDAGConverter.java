@@ -212,27 +212,27 @@ public class ResultDAGConverter {
       List<String> resultAttributes) {
 
     // check if this is a versioned metacard and pull out info if it is
-    boolean isMetacardDeleted = false; // default to not deleted
-    String id = metacard.getId(); // default to provided metacard id
-    Attribute versionAction = metacard.getAttribute(MetacardVersion.ACTION);
-    if (versionAction != null) {
-      for (Serializable action : versionAction.getValues()) {
-        if (action.toString().trim().equals(MetacardVersion.Action.DELETED.getKey())) {
-          isMetacardDeleted = true;
-          break;
-        }
-      }
-      Attribute versionIdAttr = metacard.getAttribute(MetacardVersion.ID);
-      if (versionIdAttr != null) {
-        for (Serializable versionedId : versionIdAttr.getValues()) {
-          if (isMetacardDeleted) {
-            id = versionedId.toString().trim();
+    /*    boolean isMetacardDeleted = false; // default to not deleted
+        String id = metacard.getId(); // default to provided metacard id
+        Attribute versionAction = metacard.getAttribute(MetacardVersion.ACTION);
+        if (versionAction != null) {
+          for (Serializable action : versionAction.getValues()) {
+            if (action.toString().trim().equals(MetacardVersion.Action.DELETED.getKey())) {
+              isMetacardDeleted = true;
+              break;
+            }
           }
-          break;
+          Attribute versionIdAttr = metacard.getAttribute(MetacardVersion.ID);
+          if (versionIdAttr != null) {
+            for (Serializable versionedId : versionIdAttr.getValues()) {
+              if (isMetacardDeleted) {
+                id = versionedId.toString().trim();
+              }
+              break;
+            }
+          }
         }
-      }
-    }
-
+    */
     List<String> addedAttributes = new ArrayList<>();
     Any any = orb.create_any();
     Node cardNode = new Node(0, NodeType.ENTITY_NODE, NsiliConstants.NSIL_CARD, any);
@@ -242,8 +242,8 @@ public class ResultDAGConverter {
     String attribute = parentAttrName + NsiliConstants.NSIL_CARD;
 
     if (shouldAdd(buildAttr(attribute, NsiliConstants.IDENTIFIER), resultAttributes)
-        && (id != null)) {
-      addStringAttribute(graph, cardNode, NsiliConstants.IDENTIFIER, id, orb);
+        && (metacard.getId() != null)) {
+      addStringAttribute(graph, cardNode, NsiliConstants.IDENTIFIER, metacard.getId(), orb);
       addedAttributes.add(buildAttr(attribute, NsiliConstants.IDENTIFIER));
     }
 
@@ -287,20 +287,16 @@ public class ResultDAGConverter {
     if (!shouldAdd(buildAttr(attribute, NsiliConstants.STATUS), resultAttributes)) {
       return;
     }
-    String status = NsiliCardStatus.CHANGED.name();
-    Attribute createdAttr = metacard.getAttribute(Core.METACARD_CREATED);
-    Attribute modifiedAttr = metacard.getAttribute(Core.METACARD_MODIFIED);
-    if (createdAttr != null && modifiedAttr != null) {
-      Date createdDate = (Date) createdAttr.getValue();
-      Date modifiedDate = (Date) modifiedAttr.getValue();
-      if (createdDate.equals(modifiedDate)) {
-        status = NsiliCardStatus.NEW.name();
+    Attribute actionAttribute = metacard.getAttribute(MetacardVersion.ACTION);
+    String status = NsiliCardStatus.NEW.name();
+    if (actionAttribute != null) {
+      if (String.valueOf(actionAttribute.getValue())
+          .startsWith(MetacardVersion.Action.DELETED.getKey())) {
+        status = NsiliCardStatus.OBSOLETE.name();
+      } else {
+        status = NsiliCardStatus.CHANGED.name();
       }
     }
-
-      if (isMetacardDeleted) {
-        status = NsiliCardStatus.OBSOLETE.name();
-      }
 
     addStringAttribute(graph, cardNode, NsiliConstants.STATUS, status, orb);
 
