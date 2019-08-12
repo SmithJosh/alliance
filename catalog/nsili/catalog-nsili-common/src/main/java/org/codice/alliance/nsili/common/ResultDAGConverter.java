@@ -2364,7 +2364,7 @@ public class ResultDAGConverter {
     String newUrl = url;
     if (forceHttp) {
       String pattern = "https://([^/:]+)(:\\d{1,5})?/(.*)";
-      newUrl = url.replaceAll(pattern, "http://$1:" + SystemBaseUrl.getHttpPort() + "/$3");
+      newUrl = url.replaceAll(pattern, "http://$1:" + SystemBaseUrl.EXTERNAL.getPort() + "/$3");
       LOGGER.debug("Forcing http URL: {} to {}", url, newUrl);
     }
     if (StringUtils.isNotEmpty(name)) {
