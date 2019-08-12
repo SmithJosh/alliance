@@ -13,26 +13,6 @@
  */
 package org.codice.alliance.ddms.v2;
 
-import com.connexta.ddms.DateFormat;
-import com.connexta.ddms.DdmsResource;
-import com.connexta.ddms.v2.reader.Ddms20XmlReader;
-import com.connexta.ddms.v2.resource.Identifier;
-import com.connexta.ddms.v2.resource.Language;
-import com.connexta.ddms.v2.resource.Title;
-import com.connexta.ddms.v2.resource.Type;
-import com.connexta.ddms.v2.security.ism.SecurityAttributes;
-import com.connexta.ddms.v2.summary.Category;
-import com.connexta.ddms.v2.summary.GeospatialCoverage;
-import com.connexta.ddms.v2.summary.Link;
-import com.connexta.ddms.v2.summary.RelatedResources;
-import com.connexta.ddms.v2.summary.TemporalCoverage;
-import com.connexta.ddms.v2.summary.geospatial.BoundingBox;
-import com.connexta.ddms.v2.summary.geospatial.BoundingGeometry;
-import com.connexta.ddms.v2.summary.geospatial.CountryCode;
-import com.connexta.ddms.v2.summary.geospatial.FacilityIdentifier;
-import com.connexta.gml.v3.Point;
-import com.connexta.gml.v3.Polygon;
-import com.connexta.gml.v3.SrsAttributes;
 import ddf.catalog.data.Attribute;
 import ddf.catalog.data.Metacard;
 import ddf.catalog.data.MetacardType;
@@ -50,6 +30,7 @@ import ddf.catalog.transform.InputTransformer;
 import ddf.catalog.validation.ValidationException;
 import java.io.InputStream;
 import java.io.Serializable;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -65,6 +46,26 @@ import org.codice.alliance.ddms.types.Ddms20MetacardType;
 import org.codice.alliance.ddms.types.RestrictionAttributes;
 import org.codice.alliance.ddms.wkt.GeometryCollectionBuilder;
 import org.codice.ddf.transformer.xml.streaming.Gml3ToWkt;
+import org.codice.ddms.DdmsDate;
+import org.codice.ddms.DdmsResource;
+import org.codice.ddms.gml.v3.Point;
+import org.codice.ddms.gml.v3.Polygon;
+import org.codice.ddms.gml.v3.SrsAttributes;
+import org.codice.ddms.v2.reader.Ddms20XmlReader;
+import org.codice.ddms.v2.resource.Identifier;
+import org.codice.ddms.v2.resource.Language;
+import org.codice.ddms.v2.resource.Title;
+import org.codice.ddms.v2.resource.Type;
+import org.codice.ddms.v2.security.ism.SecurityAttributes;
+import org.codice.ddms.v2.summary.Category;
+import org.codice.ddms.v2.summary.GeospatialCoverage;
+import org.codice.ddms.v2.summary.Link;
+import org.codice.ddms.v2.summary.RelatedResources;
+import org.codice.ddms.v2.summary.TemporalCoverage;
+import org.codice.ddms.v2.summary.geospatial.BoundingBox;
+import org.codice.ddms.v2.summary.geospatial.BoundingGeometry;
+import org.codice.ddms.v2.summary.geospatial.CountryCode;
+import org.codice.ddms.v2.summary.geospatial.FacilityIdentifier;
 
 public class Ddms20InputTransformer implements InputTransformer {
   private static final String DCMI_TYPE_NAMESPACE = "http://purl.org/dc/terms/DCMIType/";
@@ -284,8 +285,8 @@ public class Ddms20InputTransformer implements InputTransformer {
 
   private Attribute getCreated(DdmsResource ddms) {
     Date created = new Date();
-    if (ddms.getDates() != null && StringUtils.isNotBlank(ddms.getDates().getCreated())) {
-      created = DateFormat.INSTANCE.parse(ddms.getDates().getCreated());
+    if (ddms.getDates() != null) {
+      created = convertDdmsDate(ddms.getDates().getCreated());
     }
     return new AttributeImpl(Core.CREATED, created);
   }
@@ -382,8 +383,8 @@ public class Ddms20InputTransformer implements InputTransformer {
         ddms.getTemporalCoverages()
             .stream()
             .map(TemporalCoverage::getStart)
-            .filter(StringUtils::isNotBlank)
-            .map(DateFormat.INSTANCE::parse)
+            .filter(Objects::nonNull)
+            .map(DdmsDate::toString)
             .filter(Objects::nonNull)
             .collect(Collectors.toList());
     return new AttributeImpl(DateTime.START, starts);
@@ -394,9 +395,8 @@ public class Ddms20InputTransformer implements InputTransformer {
         ddms.getTemporalCoverages()
             .stream()
             .map(TemporalCoverage::getEnd)
-            .filter(StringUtils::isNotBlank)
-            .map(DateFormat.INSTANCE::parse)
             .filter(Objects::nonNull)
+            .map(DdmsDate::toString)
             .collect(Collectors.toList());
     return new AttributeImpl(DateTime.END, ends);
   }
@@ -405,7 +405,7 @@ public class Ddms20InputTransformer implements InputTransformer {
     List<Serializable> names =
         ddms.getCreators()
             .stream()
-            .map(com.connexta.ddms.v2.resource.Contact::getProducer)
+            .map(org.codice.ddms.v2.resource.Contact::getProducer)
             .flatMap(producer -> producer.getNames().stream())
             .filter(StringUtils::isNotBlank)
             .collect(Collectors.toList());
@@ -416,7 +416,7 @@ public class Ddms20InputTransformer implements InputTransformer {
     List<Serializable> phones =
         ddms.getCreators()
             .stream()
-            .map(com.connexta.ddms.v2.resource.Contact::getProducer)
+            .map(org.codice.ddms.v2.resource.Contact::getProducer)
             .flatMap(producer -> producer.getPhones().stream())
             .filter(StringUtils::isNotBlank)
             .collect(Collectors.toList());
@@ -427,7 +427,7 @@ public class Ddms20InputTransformer implements InputTransformer {
     List<Serializable> emails =
         ddms.getCreators()
             .stream()
-            .map(com.connexta.ddms.v2.resource.Contact::getProducer)
+            .map(org.codice.ddms.v2.resource.Contact::getProducer)
             .flatMap(producer -> producer.getEmails().stream())
             .filter(StringUtils::isNotBlank)
             .collect(Collectors.toList());
@@ -438,7 +438,7 @@ public class Ddms20InputTransformer implements InputTransformer {
     List<Serializable> names =
         ddms.getPublishers()
             .stream()
-            .map(com.connexta.ddms.v2.resource.Contact::getProducer)
+            .map(org.codice.ddms.v2.resource.Contact::getProducer)
             .flatMap(producer -> producer.getNames().stream())
             .filter(StringUtils::isNotBlank)
             .collect(Collectors.toList());
@@ -449,7 +449,7 @@ public class Ddms20InputTransformer implements InputTransformer {
     List<Serializable> phones =
         ddms.getPublishers()
             .stream()
-            .map(com.connexta.ddms.v2.resource.Contact::getProducer)
+            .map(org.codice.ddms.v2.resource.Contact::getProducer)
             .flatMap(producer -> producer.getPhones().stream())
             .filter(StringUtils::isNotBlank)
             .collect(Collectors.toList());
@@ -460,7 +460,7 @@ public class Ddms20InputTransformer implements InputTransformer {
     List<Serializable> emails =
         ddms.getPublishers()
             .stream()
-            .map(com.connexta.ddms.v2.resource.Contact::getProducer)
+            .map(org.codice.ddms.v2.resource.Contact::getProducer)
             .flatMap(producer -> producer.getEmails().stream())
             .filter(StringUtils::isNotBlank)
             .collect(Collectors.toList());
@@ -471,7 +471,7 @@ public class Ddms20InputTransformer implements InputTransformer {
     List<Serializable> names =
         ddms.getContributors()
             .stream()
-            .map(com.connexta.ddms.v2.resource.Contact::getProducer)
+            .map(org.codice.ddms.v2.resource.Contact::getProducer)
             .flatMap(producer -> producer.getNames().stream())
             .filter(StringUtils::isNotBlank)
             .collect(Collectors.toList());
@@ -482,7 +482,7 @@ public class Ddms20InputTransformer implements InputTransformer {
     List<Serializable> phones =
         ddms.getContributors()
             .stream()
-            .map(com.connexta.ddms.v2.resource.Contact::getProducer)
+            .map(org.codice.ddms.v2.resource.Contact::getProducer)
             .flatMap(producer -> producer.getPhones().stream())
             .filter(StringUtils::isNotBlank)
             .collect(Collectors.toList());
@@ -493,7 +493,7 @@ public class Ddms20InputTransformer implements InputTransformer {
     List<Serializable> emails =
         ddms.getContributors()
             .stream()
-            .map(com.connexta.ddms.v2.resource.Contact::getProducer)
+            .map(org.codice.ddms.v2.resource.Contact::getProducer)
             .flatMap(producer -> producer.getEmails().stream())
             .filter(StringUtils::isNotBlank)
             .collect(Collectors.toList());
@@ -504,7 +504,7 @@ public class Ddms20InputTransformer implements InputTransformer {
     List<Serializable> names =
         ddms.getPointOfContacts()
             .stream()
-            .map(com.connexta.ddms.v2.resource.Contact::getProducer)
+            .map(org.codice.ddms.v2.resource.Contact::getProducer)
             .flatMap(producer -> producer.getNames().stream())
             .filter(StringUtils::isNotBlank)
             .collect(Collectors.toList());
@@ -515,7 +515,7 @@ public class Ddms20InputTransformer implements InputTransformer {
     List<Serializable> phones =
         ddms.getPointOfContacts()
             .stream()
-            .map(com.connexta.ddms.v2.resource.Contact::getProducer)
+            .map(org.codice.ddms.v2.resource.Contact::getProducer)
             .flatMap(producer -> producer.getPhones().stream())
             .filter(StringUtils::isNotBlank)
             .collect(Collectors.toList());
@@ -526,7 +526,7 @@ public class Ddms20InputTransformer implements InputTransformer {
     List<Serializable> emails =
         ddms.getPointOfContacts()
             .stream()
-            .map(com.connexta.ddms.v2.resource.Contact::getProducer)
+            .map(org.codice.ddms.v2.resource.Contact::getProducer)
             .flatMap(producer -> producer.getEmails().stream())
             .filter(StringUtils::isNotBlank)
             .collect(Collectors.toList());
@@ -686,7 +686,7 @@ public class Ddms20InputTransformer implements InputTransformer {
   private Attribute getInfoCutOff(DdmsResource ddms) {
     Date infoCutOff = null;
     if (ddms.getDates() != null) {
-      infoCutOff = DateFormat.INSTANCE.parse(ddms.getDates().getInfoCutOff());
+      infoCutOff = convertDdmsDate(ddms.getDates().getInfoCutOff());
     }
     return new AttributeImpl(Ddms20MetacardType.INFO_CUT_OFF, infoCutOff);
   }
@@ -694,7 +694,7 @@ public class Ddms20InputTransformer implements InputTransformer {
   private Attribute getPosted(DdmsResource ddms) {
     Date posted = null;
     if (ddms.getDates() != null) {
-      posted = DateFormat.INSTANCE.parse(ddms.getDates().getPosted());
+      posted = convertDdmsDate(ddms.getDates().getPosted());
     }
     return new AttributeImpl(Ddms20MetacardType.POSTED, posted);
   }
@@ -736,5 +736,11 @@ public class Ddms20InputTransformer implements InputTransformer {
     List<Serializable> subtitles =
         ddms.getSubtitles().stream().map(Title::getValue).collect(Collectors.toList());
     return new AttributeImpl(Ddms20MetacardType.SUBTITLE, subtitles);
+  }
+
+  private Date convertDdmsDate(DdmsDate ddmsDate) {
+    return (ddmsDate != null && !ddmsDate.isUnknown() && !ddmsDate.isNotApplicable())
+        ? Date.from(Instant.from(ddmsDate.toRawTemporalAccessor()))
+        : null;
   }
 }
