@@ -11,10 +11,9 @@
  *
  **/
  -->
-<features xmlns="http://karaf.apache.org/xmlns/features/v1.3.0"
-  name="${project.artifactId}-${project.version}">
-    <feature name="${project.artifactId}" description="${project.description}"
-      version="${project.version}">
+<features xmlns="http://karaf.apache.org/xmlns/features/v1.3.0" name="${project.artifactId}-${project.version}">
+    <feature name="${project.artifactId}" description="${project.description}" version="${project.version}">
         <feature>catalog-transformer-streaming</feature>
+        <bundle>mvn:org.codice.alliance.ddms/catalog-ddms-transformer/${project.version}</bundle>
     </feature>
 </features>

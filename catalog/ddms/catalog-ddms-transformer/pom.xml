@@ -82,7 +82,7 @@
                         <Embed-Dependency>
                             catalog-core-api-impl;groupId=ddf.catalog.core,
                             catalog-core-api-impl;groupId=org.codice.alliance.catalog.core,
-                            ddms-utils,
+                            openddms,
                             platform-util
                         </Embed-Dependency>
                     </instructions>
