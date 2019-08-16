@@ -249,7 +249,7 @@ public class ResultDAGConverterTest {
 
   @Test
   public void testImageryAttributes() throws Exception {
-    metacard.setAttribute(new AttributeImpl(Core.DATATYPE,"Image"));
+    metacard.setAttribute(new AttributeImpl(Core.DATATYPE, "Image"));
     ResultImpl result = new ResultImpl();
     result.setMetacard(metacard);
 
@@ -281,7 +281,28 @@ public class ResultDAGConverterTest {
   }
 
   @Test
-  public void testDeleteAttribute() throws Exception {
+  public void testDeleteAttributeWithDownloadUrl() throws Exception {
+    Date testModifiedDate = new Date(2000);
+    metacard.setAttribute(new AttributeImpl(Core.MODIFIED, testModifiedDate));
+    metacard.setAttribute(new AttributeImpl(Core.RESOURCE_DOWNLOAD_URL, "https://example.com/download/{id}"));
+    metacard.setAttribute(
+        new AttributeImpl(MetacardVersion.ACTION, MetacardVersion.Action.DELETED.getKey()));
+
+    ResultImpl result = new ResultImpl();
+    result.setMetacard(metacard);
+
+    DAG dag =
+        ResultDAGConverter.convertResult(result, orb, rootPOA, new ArrayList<>(), new HashMap<>());
+    assertThat(dag, notNullValue());
+
+    String value = ResultDAGConverter.getAttributeMap(dag).get(STATUS_ATTR_NAME);
+    assertThat(value, is(NsiliCardStatus.OBSOLETE.name()));
+
+    assertThat(checkDagContains(dag, NsiliConstants.PRODUCT_URL), is(false));
+  }
+
+  @Test
+  public void testDeleteAttributeWithoutDownloadUrl() throws Exception {
     Date testModifiedDate = new Date(2000);
     metacard.setAttribute(new AttributeImpl(Core.MODIFIED, testModifiedDate));
     metacard.setAttribute(
@@ -296,6 +317,8 @@ public class ResultDAGConverterTest {
 
     String value = ResultDAGConverter.getAttributeMap(dag).get(STATUS_ATTR_NAME);
     assertThat(value, is(NsiliCardStatus.OBSOLETE.name()));
+
+    assertThat(checkDagContains(dag, NsiliConstants.PRODUCT_URL), is(false));
   }
 
   @Test
