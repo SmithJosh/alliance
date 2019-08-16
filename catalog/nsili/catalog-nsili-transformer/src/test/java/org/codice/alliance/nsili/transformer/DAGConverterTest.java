@@ -418,6 +418,28 @@ public class DAGConverterTest {
     assertThat(metacard.getLocation(), is(swapWktLocation));
   }
 
+  @Test
+  public void testEmptyPolygon() {
+    String emptyPolygonWkt = "POLYGON ((0 0, 0 0, 0 0, 0 0))";
+
+    DAG dag = new DAG();
+    DirectedAcyclicGraph<Node, Edge> graph = new DirectedAcyclicGraph<>(Edge.class);
+
+    // Create invalid root node
+    Node rootNode = createRootNode();
+    graph.addVertex(rootNode);
+
+    addCoverageNode(graph, rootNode, emptyPolygonWkt);
+
+    NsiliCommonUtils.setUCOEdgeIds(graph);
+    NsiliCommonUtils.setUCOEdges(rootNode, graph);
+    dag.edges = NsiliCommonUtils.getEdgeArrayFromGraph(graph);
+    dag.nodes = NsiliCommonUtils.getNodeArrayFromGraph(graph);
+
+    MetacardImpl metacard = dagConverter.convertDAG(dag, false, SOURCE_ID);
+    assertThat(metacard.getLocation(), is("POINT (0 0)"));
+  }
+
   private void checkExploitationInfoAttributes(MetacardImpl metacard) {
     Attribute exploitationDescAttr = metacard.getAttribute(Core.DESCRIPTION);
     assertThat(exploitationDescAttr, notNullValue());
@@ -2098,6 +2120,10 @@ public class DAGConverterTest {
   }
 
   private void addCoverageNode(DirectedAcyclicGraph<Node, Edge> graph, Node parentNode) {
+    addCoverageNode(graph, parentNode, WKT_LOCATION);
+  }
+
+  private void addCoverageNode(DirectedAcyclicGraph<Node, Edge> graph, Node parentNode, String wkt) {
     Any coverageAny = orb.create_any();
     Node coverageNode =
         new Node(0, NodeType.ENTITY_NODE, NsiliConstants.NSIL_COVERAGE, coverageAny);
@@ -2121,7 +2147,7 @@ public class DAGConverterTest {
         graph, coverageNode, NsiliConstants.SPATIAL_GEOGRAPHIC_REF_BOX, spatialCoverage, orb);
 
     ResultDAGConverter.addStringAttribute(
-        graph, coverageNode, NsiliConstants.ADVANCED_GEOSPATIAL, WKT_LOCATION, orb);
+        graph, coverageNode, NsiliConstants.ADVANCED_GEOSPATIAL, wkt, orb);
   }
 
   private void addExpoloitationInfoNode(DirectedAcyclicGraph<Node, Edge> graph, Node parentNode) {
