@@ -2243,7 +2243,7 @@ public class ResultDAGConverter {
     Map<String, String> attributes = new HashMap<>();
 
     Map<Integer, Node> nodeMap = createNodeMap(dag.nodes);
-    DirectedAcyclicGraph<Node, Edge> graph = getNodeEdgeDirectedAcyclicGraph(dag, nodeMap);
+    DirectedAcyclicGraph<Node, Edge> graph = DAGUtils.getNodeEdgeDirectedAcyclicGraph(dag, nodeMap);
 
     DepthFirstIterator<Node, Edge> graphIT = new DepthFirstIterator<>(graph, nodeMap.get(0));
     List<String> nodeStack = new ArrayList<>();
@@ -2311,24 +2311,6 @@ public class ResultDAGConverter {
     }
 
     return attributes;
-  }
-
-  private static DirectedAcyclicGraph<Node, Edge> getNodeEdgeDirectedAcyclicGraph(
-      DAG dag, Map<Integer, Node> nodeMap) {
-    DirectedAcyclicGraph<Node, Edge> graph = new DirectedAcyclicGraph<>(Edge.class);
-
-    for (Node node : dag.nodes) {
-      graph.addVertex(node);
-    }
-
-    for (Edge edge : dag.edges) {
-      Node node1 = nodeMap.get(edge.start_node);
-      Node node2 = nodeMap.get(edge.end_node);
-      if (node1 != null && node2 != null) {
-        graph.addEdge(node1, node2);
-      }
-    }
-    return graph;
   }
 
   private static boolean metacardContainsGeoInfo(Metacard metacard) {
