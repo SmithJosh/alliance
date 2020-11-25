@@ -27,29 +27,21 @@
         <setup.folder>target/dependencies</setup.folder>
     </properties>
     <dependencies>
+        <!-- DDF distribution zip -->
         <dependency>
             <groupId>org.codice.ddf</groupId>
-            <artifactId>kernel</artifactId>
+            <artifactId>ddf</artifactId>
             <version>${ddf.version}</version>
             <type>zip</type>
-        </dependency>
-        <!-- DDF Apps -->
-        <dependency>
-            <groupId>ddf.features</groupId>
-            <artifactId>apps</artifactId>
-            <version>${ddf.version}</version>
-            <classifier>features</classifier>
-            <type>xml</type>
-        </dependency>
-        <dependency>
-            <groupId>org.codice.ddf</groupId>
-            <artifactId>ui</artifactId>
-            <version>${ddf-admin-ui.version}</version>
-            <classifier>features</classifier>
-            <type>xml</type>
+            <exclusions>
+                <exclusion>
+                    <groupId>ddf</groupId>
+                    <artifactId>docs</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
-        <!-- Alliance Apps -->
+        <!-- Alliance features to add to the distribution -->
         <dependency>
             <groupId>org.codice.alliance.security</groupId>
             <artifactId>security-app</artifactId>
@@ -85,6 +77,7 @@
             <classifier>features</classifier>
             <type>xml</type>
         </dependency>
+
         <!--other dependencies-->
         <dependency>
             <groupId>org.codice.ddf</groupId>
@@ -138,6 +131,7 @@
                     </execution>
                 </executions>
             </plugin>
+            <!-- Adds Alliance features to the base DDF distribution -->
             <plugin>
                 <groupId>org.apache.karaf.tooling</groupId>
                 <artifactId>karaf-maven-plugin</artifactId>
@@ -149,35 +143,21 @@
                             <goal>features-add-to-repository</goal>
                         </goals>
                         <configuration>
+                            <!-- Add only the top-level features defined in Alliance's feature
+                                 descriptors (skipping transitive features). This ensures we can
+                                 install all the features we need without blindly pulling in
+                                 features from third party feature descriptors. -->
                             <addTransitiveFeatures>false</addTransitiveFeatures>
+                            <resolveDefinedRepositoriesRecursively>false</resolveDefinedRepositoriesRecursively>
                             <!-- When adding a new application, the feature reference must be located in here and also in org.apache.karaf.features.cfg -->
                             <descriptors>
-                                <!-- DDF Apps -->
-                                <descriptor>
-                                    mvn:ddf.features/apps/${ddf.version}/xml/features
-                                </descriptor>
-                                <descriptor>
-                                    mvn:org.codice.ddf/ui/${ddf-admin-ui.version}/xml/features
-                                </descriptor>
-
-                                <!-- Alliance Apps -->
-                                <descriptor>
-                                    mvn:org.codice.alliance.security/security-app/${project.version}/xml/features
-                                </descriptor>
-                                <descriptor>
-                                    mvn:org.codice.alliance.imaging/imaging-app/${project.version}/xml/features
-                                </descriptor>
-                                <descriptor>
-                                    mvn:org.codice.alliance.video/video-app/${project.version}/xml/features
-                                </descriptor>
-                                <descriptor>
-                                    mvn:org.codice.alliance.distribution/alliance-branding-app/${project.version}/xml/features
-                                </descriptor>
-                                <descriptor>
-                                    mvn:org.codice.alliance.distribution/install-profiles/${project.version}/xml/features
-                                </descriptor>
+                                <descriptor>mvn:org.codice.alliance.security/security-app/${project.version}/xml/features</descriptor>
+                                <descriptor>mvn:org.codice.alliance.imaging/imaging-app/${project.version}/xml/features</descriptor>
+                                <descriptor>mvn:org.codice.alliance.video/video-app/${project.version}/xml/features</descriptor>
+                                <descriptor>mvn:org.codice.alliance.distribution/alliance-branding-app/${project.version}/xml/features</descriptor>
+                                <descriptor>mvn:org.codice.alliance.distribution/install-profiles/${project.version}/xml/features</descriptor>
                             </descriptors>
-                            <repository>${setup.folder}/ddf-kernel-${ddf.version}/system</repository>
+                            <repository>${setup.folder}/ddf-${ddf.version}/system</repository>
                         </configuration>
                     </execution>
                 </executions>
@@ -215,7 +195,7 @@
                             <artifactItems>
                                 <artifactItem>
                                     <groupId>org.codice.ddf</groupId>
-                                    <artifactId>kernel</artifactId>
+                                    <artifactId>ddf</artifactId>
                                     <version>${ddf.version}</version>
                                     <type>zip</type>
                                     <outputDirectory>${setup.folder}</outputDirectory>
@@ -266,7 +246,7 @@
                 </executions>
                 <configuration>
                     <file>
-                        ${project.basedir}/target/dependencies/ddf-kernel-${ddf.version}/etc/custom.system.properties
+                        ${project.basedir}/target/dependencies/ddf-${ddf.version}/etc/custom.system.properties
                     </file>
                     <regex>true</regex>
                     <replacements>
@@ -301,7 +281,7 @@
                         </goals>
                         <configuration>
                             <target>
-                                <concat destfile="${project.basedir}/target/dependencies/ddf-kernel-${ddf.version}/etc/custom.system.properties" append="true">
+                                <concat destfile="${project.basedir}/target/dependencies/ddf-${ddf.version}/etc/custom.system.properties" append="true">
 default.nitf.thread.count=3
 
 # Set the default port number for the catalog-ftp feature FTP endpoint
